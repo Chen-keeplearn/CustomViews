@@ -9,7 +9,7 @@ class MainActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
 
-        val inputStream = assets.open("img_start01.jpg")
+        val inputStream = assets.open("qmsht.png")
         largeImageView.setImage(inputStream)
     }
 }

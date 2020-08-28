@@ -6,6 +6,7 @@ import android.util.AttributeSet
 import android.util.Log
 import android.view.GestureDetector
 import android.view.MotionEvent
+import android.view.ScaleGestureDetector
 import android.view.View
 import android.widget.Scroller
 import java.io.InputStream
@@ -23,7 +24,8 @@ class LargeLongImageView @JvmOverloads constructor(
     c: Context,
     attrs: AttributeSet? = null,
     defaultAttr: Int = 0
-) : View(c, attrs, defaultAttr), GestureDetector.OnGestureListener, View.OnTouchListener {
+) : View(c, attrs, defaultAttr), GestureDetector.OnGestureListener,
+    ScaleGestureDetector.OnScaleGestureListener, GestureDetector.OnDoubleTapListener {
 
 
     //显示的图片块区域
@@ -33,7 +35,10 @@ class LargeLongImageView @JvmOverloads constructor(
     private var mOptions: BitmapFactory.Options = BitmapFactory.Options()
 
     //手势,图片拉动
-    private var mGestureDetector: GestureDetector = GestureDetector(c, this)
+    private val mGestureDetector: GestureDetector = GestureDetector(c, this)
+
+    //手势缩放
+    private val mScaleGestureDetector: ScaleGestureDetector = ScaleGestureDetector(c, this)
 
     //滚动类
     private var mScroll: Scroller = Scroller(c)
@@ -45,14 +50,17 @@ class LargeLongImageView @JvmOverloads constructor(
     private var mViewHeight: Int = 0
 
     private var mBitmap: Bitmap? = null
-    private var mScale: Float = 0F
+
+    private var mScale: Float = 1F
+
+    //当前缩放因子
+    private var mCurrentScale: Float = 1F
 
     //canvas绘制缩放图片时的matrix
     private val mMatrix = Matrix()
 
-    init {
-        setOnTouchListener(this)
-    }
+    //放大倍数
+    private var mMultiple = 3
 
     /**
      * 传入图片
@@ -98,11 +106,15 @@ class LargeLongImageView @JvmOverloads constructor(
         //等比例压缩,图片显示在View上面,图片宽度显示成view宽度,那图片高度就是等比例缩放得到
         //计算缩放因子
         mScale = mViewWidth / mImageWidth.toFloat()
+
+        mCurrentScale = mScale
+
         //这样计算的mScale是可能会有问题的,有可能是0.0
         //mScale = (mViewWidth / mImageWidth).toFloat()
         log("mViewWidth=$mViewWidth--mViewHeight==$mViewHeight--mImageWidth==$mImageWidth--mImageHeight==$mImageHeight")
         //计算显示区域bottom
-        mRect.bottom = (mViewHeight / mScale).toInt()
+        mRect.bottom = mViewHeight
+        //mRect.bottom = (mViewHeight / mCurrentScale).toInt()
     }
 
     /**
@@ -110,11 +122,11 @@ class LargeLongImageView @JvmOverloads constructor(
      */
     override fun onDraw(canvas: Canvas) {
         super.onDraw(canvas)
-        //inBitmap:相当于 mOptions.inMutable = true开启复用后,每次复用的bitmap都是在Options对象的inBitmap中
+        //复用, inBitmap:相当于 mOptions.inMutable = true开启复用后,每次复用的bitmap都是在Options对象的inBitmap中
         mOptions.inBitmap = mBitmap
         //得到的显示的区域图片
         mBitmap = mRegionDecoder.decodeRegion(mRect, mOptions)
-        mMatrix.setScale(mScale, mScale)
+        mMatrix.setScale(mCurrentScale, mCurrentScale)
         //画布是最多只有屏幕宽高这样的大小,需要将图片进行缩放
         canvas.drawBitmap(mBitmap!!, mMatrix, null)
     }
@@ -143,18 +155,41 @@ class LargeLongImageView @JvmOverloads constructor(
         distanceX: Float,
         distanceY: Float
     ): Boolean {
-        //x方向是不变的
+        /*//x方向是不变的
         mRect.offset(0, distanceY.toInt())
 
         if (mRect.bottom > mImageHeight) {
             //滑动到底部
             mRect.bottom = mImageHeight
-            mRect.top = mImageHeight - (mViewHeight / mScale).toInt()
+            mRect.top = mImageHeight - (mViewHeight / mCurrentScale).toInt()
         }
         if (mRect.top < 0) {
             //滑动到顶部
             mRect.top = 0
-            mRect.bottom = (mViewHeight / mScale).toInt()
+            mRect.bottom = (mViewHeight / mCurrentScale).toInt()
+        }*/
+        mRect.offset(distanceX.toInt(), distanceY.toInt())
+
+        if (mRect.left < 0) {
+            mRect.left = 0
+            mRect.right = (mViewWidth / mCurrentScale).toInt()
+        }
+
+        if (mRect.right > mImageWidth) {
+            mRect.right = mImageWidth
+            mRect.left = mImageWidth - (mViewWidth / mCurrentScale).toInt()
+        }
+
+        if (mRect.top < 0) {
+            //滑动到顶部
+            mRect.top = 0
+            mRect.bottom = (mViewHeight / mCurrentScale).toInt()
+        }
+
+        if (mRect.bottom > mImageHeight) {
+            //滑动到底部
+            mRect.bottom = mImageHeight
+            mRect.top = mImageHeight - (mViewHeight / mCurrentScale).toInt()
         }
         //重绘,每次滑动都需要进行重绘
         invalidate()
@@ -163,6 +198,7 @@ class LargeLongImageView @JvmOverloads constructor(
 
     /**
      * 滑动惯性
+     * velocityY取负数
      */
     override fun onFling(
         e1: MotionEvent?,
@@ -173,7 +209,7 @@ class LargeLongImageView @JvmOverloads constructor(
         //对于x来说,都是0,目前只处理y方向上的滑动
         //maxY:最大滑动的y,并不是图片的高度,而是图片的高度减去屏幕的高度
         //startY是从top开始的,并不是从0开始
-        mScroll.fling(
+        /*mScroll.fling(
             0,
             mRect.top,
             0,
@@ -181,7 +217,17 @@ class LargeLongImageView @JvmOverloads constructor(
             0,
             0,
             0,
-            mImageHeight - (mViewHeight / mScale).toInt()
+            mImageHeight - (mViewHeight / mCurrentScale).toInt()
+        )*/
+        mScroll.fling(
+            mRect.left,
+            mRect.top,
+            (-velocityX).toInt(),
+            -velocityY.toInt(),
+            0,
+            mImageWidth - (mViewWidth / mCurrentScale).toInt(),
+            0,
+            mImageHeight - (mViewHeight / mCurrentScale).toInt()
         )
         return false
     }
@@ -197,7 +243,7 @@ class LargeLongImageView @JvmOverloads constructor(
         if (mScroll.computeScrollOffset()) {
             //拿到rect的top和bottom,然后重绘
             mRect.top = mScroll.currY
-            mRect.bottom = mRect.top + (mViewHeight / mScale).toInt()
+            mRect.bottom = mRect.top + (mViewHeight / mCurrentScale).toInt()
             invalidate()
         }
     }
@@ -218,11 +264,68 @@ class LargeLongImageView @JvmOverloads constructor(
     /**
      * onTouch直接交给手势处理
      */
-    override fun onTouch(v: View?, event: MotionEvent?): Boolean {
-        return mGestureDetector.onTouchEvent(event)
+    override fun onTouchEvent(event: MotionEvent?): Boolean {
+        mGestureDetector.onTouchEvent(event)
+        mScaleGestureDetector.onTouchEvent(event)
+        return true
     }
+
+
+    /**
+     * 实现缩放,该方法需要返回true,否则无法监测到手势缩放
+     */
+    override fun onScaleBegin(p0: ScaleGestureDetector?): Boolean {
+        return true
+    }
+
+    override fun onScaleEnd(p0: ScaleGestureDetector?) {
+    }
+
+    /**
+     * 缩放
+     */
+    override fun onScale(detector: ScaleGestureDetector): Boolean {
+        //处理手指缩放事件
+        //获取与上次事件相比，得到的比例因子
+        val scaleFactor = detector.scaleFactor
+        //mCurrentScale += scaleFactor - 1
+        mCurrentScale *= scaleFactor
+        if (mCurrentScale > mScale * mMultiple) {
+            mCurrentScale = mScale * mMultiple
+        } else if (mCurrentScale <= mScale) {
+            mCurrentScale = mScale
+        }
+        mRect.right = (mRect.left + (mViewWidth / mCurrentScale)).toInt()
+        mRect.bottom = (mRect.top + (mViewHeight / mCurrentScale)).toInt()
+        invalidate()
+        return true
+    }
+
+    /**
+     * GestureDetector的双击事件
+     */
+    override fun onDoubleTap(event: MotionEvent?): Boolean {
+        mCurrentScale = if (mCurrentScale > mScale) {
+            mScale
+        } else {
+            mScale * mMultiple
+        }
+        mRect.right = (mRect.left + (mViewWidth / mCurrentScale)).toInt()
+        mRect.bottom = (mRect.top + (mViewHeight / mCurrentScale)).toInt()
+        invalidate()
+        return true
+    }
+
+    override fun onDoubleTapEvent(p0: MotionEvent?): Boolean {
+        return false
+    }
+
+    override fun onSingleTapConfirmed(p0: MotionEvent?): Boolean {
+        return false
+    }
+
 }
 
-fun LargeLongImageView.log(msg:String){
+fun LargeLongImageView.log(msg: String) {
     Log.i("yl---", msg)
 }
