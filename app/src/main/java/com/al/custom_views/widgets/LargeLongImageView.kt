@@ -169,28 +169,7 @@ class LargeLongImageView @JvmOverloads constructor(
             mRect.bottom = (mViewHeight / mCurrentScale).toInt()
         }*/
         mRect.offset(distanceX.toInt(), distanceY.toInt())
-
-        if (mRect.left < 0) {
-            mRect.left = 0
-            mRect.right = (mViewWidth / mCurrentScale).toInt()
-        }
-
-        if (mRect.right > mImageWidth) {
-            mRect.right = mImageWidth
-            mRect.left = mImageWidth - (mViewWidth / mCurrentScale).toInt()
-        }
-
-        if (mRect.top < 0) {
-            //滑动到顶部
-            mRect.top = 0
-            mRect.bottom = (mViewHeight / mCurrentScale).toInt()
-        }
-
-        if (mRect.bottom > mImageHeight) {
-            //滑动到底部
-            mRect.bottom = mImageHeight
-            mRect.top = mImageHeight - (mViewHeight / mCurrentScale).toInt()
-        }
+        handleRectBorder()
         //重绘,每次滑动都需要进行重绘
         invalidate()
         return false
@@ -304,7 +283,7 @@ class LargeLongImageView @JvmOverloads constructor(
     /**
      * GestureDetector的双击事件
      */
-    override fun onDoubleTap(event: MotionEvent?): Boolean {
+    override fun onDoubleTap(event: MotionEvent): Boolean {
         mCurrentScale = if (mCurrentScale > mScale) {
             mScale
         } else {
@@ -312,8 +291,38 @@ class LargeLongImageView @JvmOverloads constructor(
         }
         mRect.right = (mRect.left + (mViewWidth / mCurrentScale)).toInt()
         mRect.bottom = (mRect.top + (mViewHeight / mCurrentScale)).toInt()
+        handleRectBorder()
         invalidate()
         return true
+    }
+
+    /**
+     * 处理图片滑动到Rect区域的边界的问题
+     */
+    private fun handleRectBorder() {
+        if (mRect.left < 0) {
+            //左边
+            mRect.left = 0
+            mRect.right = (mViewWidth / mCurrentScale).toInt()
+        }
+
+        if (mRect.right > mImageWidth) {
+            //右边
+            mRect.right = mImageWidth
+            mRect.left = mImageWidth - (mViewWidth / mCurrentScale).toInt()
+        }
+
+        if (mRect.top < 0) {
+            //滑动到顶部
+            mRect.top = 0
+            mRect.bottom = (mViewHeight / mCurrentScale).toInt()
+        }
+
+        if (mRect.bottom > mImageHeight) {
+            //滑动到底部
+            mRect.bottom = mImageHeight
+            mRect.top = mImageHeight - (mViewHeight / mCurrentScale).toInt()
+        }
     }
 
     override fun onDoubleTapEvent(p0: MotionEvent?): Boolean {
